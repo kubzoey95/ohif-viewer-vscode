@@ -1,0 +1,7 @@
+out
+dist
+node_modules
+.vscode
+.vscode-test/
+*.vsix
+web/.parcel-cache
