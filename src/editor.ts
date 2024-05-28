@@ -28,7 +28,7 @@ export class DcmView implements CustomReadonlyEditorProvider{
     public constructor(extensionUri: Uri){
         this.extensionUri = extensionUri;
         this.workers = [];
-        for (let i=0; i<32; i++){
+        for (let i=0; i<1; i++){
             this.workers.push(new Worker(path.join(__dirname, "convertWorker.js")));
         }
     }
@@ -39,7 +39,7 @@ export class DcmView implements CustomReadonlyEditorProvider{
 
     resolveCustomEditor(document: DcmViewDocument, panel: WebviewPanel, token: CancellationToken): void | Thenable<void> {
         panel.webview.options = {enableScripts: true, localResourceRoots: [this.extensionUri, document.dir]};
-        
+
         let scriptSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "web", "dist", "index.js"));
 
 		let cssSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "web", "dist", "index.css"));

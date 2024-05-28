@@ -1,4 +1,4 @@
-import * as tf from '@tensorflow/tfjs';
+import * as tf from '@tensorflow/tfjs-node';
 import { OpenJPEGWASM } from './codec-openjpeg';
 
 import { getJpegData } from './getjpeg';
@@ -35,7 +35,7 @@ const getDcmImage = async image => {
         pixelDataConverted = new arrayType(decoder.getDecodedBuffer().buffer);
     }
     else{
-        pixelDataConverted = new arrayType(image.getInterpretedData().buffer);
+        pixelDataConverted = image.getInterpretedData();
     }
     //@ts-ignore
     let out = tf.tensor(Array.from(pixelDataConverted)).reshape([cols, rows, 1]);

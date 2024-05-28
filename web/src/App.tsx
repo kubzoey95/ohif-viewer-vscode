@@ -6,9 +6,9 @@ const vscode = acquireVsCodeApi();
 
 
 class App extends Component {
-    state = {sliceId: 0, slices: []};
-    cachedImgs: {[id: number] : ImageData} = {};
+    state = {sliceId: 0, slices: [], cachedImgs: Array<any>, t: 0};
     canvas: RefObject<HTMLCanvasElement>;
+    interval: any;
 
     constructor(props: {}) {
         super(props);
@@ -32,8 +32,11 @@ class App extends Component {
     }
 
     async redrawCanvas(){
-        const imageData = this.cachedImgs[this.state.slices[this.state.sliceId]];
-        if(imageData) {
+        const cached = this.state.cachedImgs[this.state.slices[this.state.sliceId]];
+        if(cached) {
+            //@ts-ignore
+            const [id, [w,h,c], arr] = cached;
+            const imageData = new ImageData(arr, h, w);
             this.canvas.current?.setAttribute("width", imageData.width.toString());
             this.canvas.current?.setAttribute("height", imageData.height.toString());
             this.canvas.current?.getContext("2d")?.putImageData(imageData, 0, 0);
@@ -41,25 +44,26 @@ class App extends Component {
     }
     //@ts-ignore
     async onSlide(e){
-        this.setState({sliceId: parseInt(e.nativeEvent.srcElement.value)});
+        this.setState({...this.state, sliceId: parseInt(e.nativeEvent.srcElement.value)});
     }
     //@ts-ignore
     async onWheel(e){
-        this.setState({sliceId: Math.min(Math.max(this.state.sliceId + Math.sign(e.deltaY), 0), this.state.slices.length - 1)});
+        this.setState({...this.state, sliceId: Math.min(Math.max(this.state.sliceId + Math.sign(e.deltaY), 0), this.state.slices.length - 1)});
     }
     
     //@ts-ignore
     async handleMessage(e){
         switch(e.data.msg){
             case "array":
-                const [id, [w,h,c], arr] = e.data.array;
-                this.cachedImgs[id] = new ImageData(arr, h, w);
-                console.log(`got ${id}`)
-                break;
-            case "url":
+                const id = e.data.array[0];
+                //@ts-ignore
+                this.state.cachedImgs[id] = e.data.array;
+                this.setState({...this.state, cachedImgs: this.state.cachedImgs})
                 break;
             case "ids":
-                this.setState({sliceId: Math.floor(e.data.ids.length / 2), slices: e.data.ids});
+                this.setState({...this.state, sliceId: Math.floor(e.data.ids.length / 2), slices: e.data.ids});
+                break;
+            default:
                 break;
             
         }
@@ -68,11 +72,22 @@ class App extends Component {
         this.redrawCanvas();
     }
     componentDidMount() {
+        const state = vscode.getState();
+        if(state){
+            console.log(state)
+            this.setState(state);
+        }
         window.addEventListener('message', this.handleMessage.bind(this));
         vscode.postMessage({msg: "ready"});
+        this.interval = setInterval(() => {
+            this.setState({...this.state, t: (this.state.t + 1) % 1000});
+            // console.log(this.state)
+            vscode.setState(this.state);
+    }, 500)
     }
     componentWillUnmount() {
         window.removeEventListener('message', this.handleMessage.bind(this));
+        clearInterval(this.interval);
     }
 }
 
