@@ -33,13 +33,17 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "rsync -a ./src/codec-openjpeg/wasm/ ./out/codec-openjpeg/ & tsc -p ./",
-    "watch": "rsync -a ./src/codec-openjpeg/wasm/ ./out/codec-openjpeg/ & tsc -watch -p ./",
+    "compile": "tsc -p ./ && npm run build-viewer",
+    "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "postinstall": "cd Viewers && yarn install",
+    "build-viewer": "cd Viewers && yarn run build && cd .. && rm -rf out/viewer-dist && cp -r Viewers/platform/app/dist out/viewer-dist"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/http-server": "^0.12.4",
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
     "@types/vscode": "^1.86.0",
@@ -51,10 +55,11 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@tensorflow/tfjs": "^4.19.0",
-    "@tensorflow/tfjs-node": "^4.19.0",
-    "daikon": "^1.2.46",
-    "dicom-parser": "^1.8.21",
-    "glob": "^10.4.1"
+    "cors": "^2.8.5",
+    "dcmjs": "^0.33.0",
+    "express": "^4.19.2",
+    "glob": "^10.4.1",
+    "helmet": "^7.1.0",
+    "http-server": "^14.1.1"
   }
 }

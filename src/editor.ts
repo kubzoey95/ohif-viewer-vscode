@@ -1,96 +1,87 @@
 import * as vscode from 'vscode';
 import { CancellationToken, CustomDocument, CustomDocumentOpenContext, CustomReadonlyEditorProvider, Uri, WebviewPanel } from 'vscode';
-import * as glob from 'glob';
+import { convertDICOMToJSON } from './dicom-json-generator.js';
 import * as path from 'path';
-import * as dicomParser from 'dicom-parser';
-import { getImageData, getImageId } from './dicomUtils';
-import { Worker } from 'worker_threads';
+import { randomUUID } from 'crypto';
+const express = require('express');
 
 class DcmViewDocument implements CustomDocument{
     _uri: Uri;
     public dir: Uri;
     public fetched: Boolean = false;
-    public constructor(uri: Uri){
+    public metaDir: Uri;
+    public extensionUri: Uri;
+    private app;
+    public dcmsEndpoint;
+    public dicomJSONEndpoint;
+    private endpoints = [];
+
+
+    public constructor(uri: Uri, extensionUri: Uri, app){
         this._uri = uri;
+        this.extensionUri = extensionUri;
         this.dir = vscode.Uri.file(path.dirname(this._uri.path));
+        this.metaDir = vscode.Uri.joinPath(this.extensionUri, randomUUID());
+        vscode.workspace.fs.createDirectory(this.metaDir);
+        this.app = app;
+        this.dcmsEndpoint = `/${randomUUID()}`;
+        this.dicomJSONEndpoint = `/${randomUUID()}`;
+        
+        this.endpoints = [this.app.use(this.dcmsEndpoint, express.static(this.dir.path)), this.app.use(this.dicomJSONEndpoint, express.static(this.metaDir.path))];
     }
     get uri(){return this._uri;}
     dispose(): void {
-        
+        vscode.workspace.fs.delete(this.metaDir, {recursive: true});
     }
 }
 
 export class DcmView implements CustomReadonlyEditorProvider{
     
     private extensionUri: Uri;
-    private workers: Array<Worker>;
+    private port: string | number;
+    private app;
     
-    public constructor(extensionUri: Uri){
+    public constructor(extensionUri: Uri, port: string | number, app){
         this.extensionUri = extensionUri;
-        this.workers = [];
-        for (let i=0; i<1; i++){
-            this.workers.push(new Worker(path.join(__dirname, "convertWorker.js")));
-        }
+        this.port = port;
+        this.app = app;
     }
 
     openCustomDocument(uri: Uri, openContext: CustomDocumentOpenContext, token: CancellationToken): CustomDocument | Thenable<CustomDocument> {
-        return new DcmViewDocument(uri);
+        return new DcmViewDocument(uri, this.extensionUri, this.app);
     }
 
-    resolveCustomEditor(document: DcmViewDocument, panel: WebviewPanel, token: CancellationToken): void | Thenable<void> {
-        panel.webview.options = {enableScripts: true, localResourceRoots: [this.extensionUri, document.dir]};
+    async resolveCustomEditor(document: DcmViewDocument, panel: WebviewPanel, token: CancellationToken): Promise<void> {
+        panel.webview.options = {enableScripts: true, localResourceRoots: [this.extensionUri, document.dir, document.metaDir]};
+        const jsonUri = vscode.Uri.joinPath(document.metaDir, "dicom.json");
+        
+        const json = await convertDICOMToJSON(document.dir.path, `http://localhost:${this.port}${document.dcmsEndpoint}/`, jsonUri.path);
+        
+        const OHIFUri = encodeURI(`http://localhost:${this.port}/viewer/dicomjson?url=${document.dicomJSONEndpoint}/dicom.json?StudyInstanceUIDs=${json.studies[0]["StudyInstanceUID"]}`);
+        
+        panel.webview.html = `
+        <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        <html xmlns="http://www.w3.org/1999/xhtml">
+            <head>
+                <title>Test Layout</title>
+                <style type="text/css">
+                    body, html
+                    {
+                        margin: 0; padding: 0; height: 100%; overflow: hidden;
+                    }
 
-        let scriptSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "web", "dist", "index.js"));
-
-		let cssSrc = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "web", "dist", "index.css"));
-
-		panel.webview.html = `<!DOCTYPE html>
-        <html lang="en">
-          <head>
-            <link rel="stylesheet" href="${cssSrc}" />
-          </head>
-          <body>
-            <noscript>You need to enable JavaScript to run this app.</noscript>
-            <div id="root"></div>
-            <script src="${scriptSrc}"></script>
-          </body>
+                    #content
+                    {
+                        position:absolute; left: 0; right: 0; bottom: 0; top: 0px; 
+                    }
+                </style>
+            </head>
+            <body>
+                <div id="content">
+                    <iframe width="100%" height="100%" frameborder="0" src="${OHIFUri}"></iframe>
+                </div>
+            </body>
         </html>
         `;
-        this.workers.map(async e => {
-            e.on("message", m => {
-                panel.webview.postMessage({msg: "array", array: m.out});
-            });
-        });
-        panel.webview.onDidReceiveMessage(
-            async message => {
-                switch(message.msg){
-                    case "ready":
-                        if(!document.fetched){
-                            const dirList = await glob.glob(path.join(document.dir.path, "*.dcm"));
-                            panel.webview.postMessage({msg: "len", len: dirList.length});
-                            const buffs = dirList.map(vscode.Uri.file).map(vscode.workspace.fs.readFile);
-                            let ids = buffs.map(async e => {
-                                const dcm = dicomParser.parseDicom(await e, {untilTag: 'x00200032'});
-                                return getImageId(dcm);
-                            });
-                            //@ts-ignore
-                            ids = await Promise.all(ids);
-    
-                            //@ts-ignore
-                            ids.sort((a,b) => a-b);
-    
-                            panel.webview.postMessage({msg: "ids", ids: ids});
-                            
-                            buffs.map(async (e, i) => {
-                                this.workers[i % this.workers.length].postMessage({data: await e});
-                            });
-                            document.fetched = true;
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-          );
 	}
 }
