@@ -1,12 +1,15 @@
 {
-  "name": "react-ext",
-  "displayName": "react-ext",
-  "description": "",
+  "name": "ohif-viewer",
+  "displayName": "OHIF Viewer",
+  "description": "OHIF Viewer integrated with VSCode",
+  "publisher": "kubzoey95",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.86.0"
+    "vscode": "^1.89.0"
   },
   "categories": [
+    "Visualization",
+    "Data Science",
     "Other"
   ],
   "activationEvents": [],
@@ -15,7 +18,7 @@
     "customEditors": [
       {
         "viewType": "dcmView",
-        "displayName": "DCM Viewer",
+        "displayName": "OHIF Viewer",
         "selector": [
           {
             "filenamePattern": "*.dcm"
@@ -33,24 +36,24 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./ && npm run build-viewer",
-    "watch": "tsc -watch -p ./",
+    "compile": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node && npm run build-viewer",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
     "postinstall": "cd Viewers && yarn install",
-    "build-viewer": "cd Viewers && yarn run build && cd .. && rm -rf out/viewer-dist && cp -r Viewers/platform/app/dist out/viewer-dist"
+    "build-viewer": "cd Viewers && yarn run build && cd .. && rm -rf out/viewer-dist && mkdir -p out && cp -r Viewers/platform/app/dist out/viewer-dist"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/http-server": "^0.12.4",
     "@types/mocha": "^10.0.6",
-    "@types/node": "18.x",
-    "@types/vscode": "^1.86.0",
+    "@types/node": "^18.19.33",
+    "@types/vscode": "^1.89.0",
     "@typescript-eslint/eslint-plugin": "^7.0.2",
     "@typescript-eslint/parser": "^7.0.2",
     "@vscode/test-cli": "^0.0.6",
     "@vscode/test-electron": "^2.3.9",
+    "esbuild": "^0.21.4",
     "eslint": "^8.56.0",
     "typescript": "^5.3.3"
   },

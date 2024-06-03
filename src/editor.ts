@@ -3,7 +3,8 @@ import { CancellationToken, CustomDocument, CustomDocumentOpenContext, CustomRea
 import { convertDICOMToJSON } from './dicom-json-generator.js';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-const express = require('express');
+import express from 'express';
+import * as dcmjs from 'dcmjs';
 
 class DcmViewDocument implements CustomDocument{
     _uri: Uri;
@@ -38,27 +39,35 @@ class DcmViewDocument implements CustomDocument{
 export class DcmView implements CustomReadonlyEditorProvider{
     
     private extensionUri: Uri;
-    private port: string | number;
+    private cacheDir: Uri;
+    private appUri: string;
     private app;
     
-    public constructor(extensionUri: Uri, port: string | number, app){
+    public constructor(extensionUri: Uri, cacheDir: Uri, appUri: string, app){
         this.extensionUri = extensionUri;
-        this.port = port;
+        this.cacheDir = cacheDir;
+        this.appUri = appUri;
         this.app = app;
     }
 
     openCustomDocument(uri: Uri, openContext: CustomDocumentOpenContext, token: CancellationToken): CustomDocument | Thenable<CustomDocument> {
-        return new DcmViewDocument(uri, this.extensionUri, this.app);
+        return new DcmViewDocument(uri, this.cacheDir, this.app);
     }
 
     async resolveCustomEditor(document: DcmViewDocument, panel: WebviewPanel, token: CancellationToken): Promise<void> {
         panel.webview.options = {enableScripts: true, localResourceRoots: [this.extensionUri, document.dir, document.metaDir]};
+
         const jsonUri = vscode.Uri.joinPath(document.metaDir, "dicom.json");
         
-        const json = await convertDICOMToJSON(document.dir.path, `http://localhost:${this.port}${document.dcmsEndpoint}/`, jsonUri.path);
+        const json = await convertDICOMToJSON(document.dir.path, `${this.appUri}${document.dcmsEndpoint}/`, jsonUri.path);
         
-        const OHIFUri = encodeURI(`http://localhost:${this.port}/viewer/dicomjson?url=${document.dicomJSONEndpoint}/dicom.json?StudyInstanceUIDs=${json.studies[0]["StudyInstanceUID"]}`);
-        
+        const SeriesInstanceUID = await vscode.workspace.fs.readFile(document.uri).then(e => {
+            const dicomDict = dcmjs.data.DicomMessage.readFile(e.buffer);
+            const instance = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
+            const { StudyInstanceUID, SeriesInstanceUID } = instance;
+            return SeriesInstanceUID;
+        });
+        let OHIFUri = encodeURI(`${this.appUri}/viewer/dicomjson?url=${document.dicomJSONEndpoint}/dicom.json?SeriesInstanceUIDs=${SeriesInstanceUID}`);
         panel.webview.html = `
         <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
         <html xmlns="http://www.w3.org/1999/xhtml">

@@ -15,17 +15,10 @@
  *   dicomweb:https://ohif-assets.s3.us-east-2.amazonaws.com/dicom-json/data/Series1/Instance1
  * - outputJSONPath: path to the output JSON file
  */
-const dcmjs = require('dcmjs');
+
+import * as dcmjs from 'dcmjs';
 const path = require('path');
 const fs = require('fs').promises;
-
-const args = process.argv.slice(2);
-const [studyDirectory, urlPrefix, outputPath] = args;
-
-if (args.length !== 3) {
-  console.error('Usage: node dicomStudyToJSONLaunch.js <studyFolder> <urlPrefix> <outputJSONPath>');
-  process.exit(1);
-}
 
 const model = {
   studies: [],
@@ -268,4 +261,3 @@ function createInstanceMetaDataMultiFrame(instance) {
   return instances;
 }
 
-convertDICOMToJSON(studyDirectory, urlPrefix, outputPath);

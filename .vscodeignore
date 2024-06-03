@@ -1,7 +1,12 @@
 .vscode/**
 .vscode-test/**
 src/**
+Viewers/**
+node_modules/**
 .gitignore
+.gitmodules
+package-lock.json
+package.json
 .yarnrc
 vsc-extension-quickstart.md
 **/tsconfig.json
