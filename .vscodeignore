@@ -16,3 +16,4 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 cacheDir/**
 view.png
+ohifConfig.js

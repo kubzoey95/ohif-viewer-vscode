@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { CancellationToken, CustomDocument, CustomDocumentOpenContext, CustomReadonlyEditorProvider, Uri, WebviewPanel } from 'vscode';
-import { convertDICOMToJSON } from './dicom-json-generator.js';
+import { doConversion } from './dicom-json-generator.js';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import express from 'express';
@@ -59,7 +59,7 @@ export class DcmView implements CustomReadonlyEditorProvider{
 
         const jsonUri = vscode.Uri.joinPath(document.metaDir, "dicom.json");
         
-        const json = await convertDICOMToJSON(document.dir.path, `${this.appUri}${document.dcmsEndpoint}/`, jsonUri.path);
+        const json = await doConversion(document.dir.path, `${this.appUri}${document.dcmsEndpoint}/`, jsonUri.path);
         
         const SeriesInstanceUID = await vscode.workspace.fs.readFile(document.uri).then(e => {
             const dicomDict = dcmjs.data.DicomMessage.readFile(e.buffer);
