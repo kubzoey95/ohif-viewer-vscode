@@ -3,7 +3,7 @@
   "displayName": "OHIF Viewer",
   "description": "OHIF Viewer integrated with VSCode",
   "publisher": "kubzoey95",
-  "icon": "Viewers/platform/app/public/assets/favicon.ico",
+  "icon": "icon.png",
   "author": {
     "name": "Jakub Belicki",
     "email": "jakubsliwice@o2.pl",
@@ -30,7 +30,9 @@
     "brain",
     "tomography",
     "DICOM",
-    "DCM"
+    "DCM",
+    "viewer",
+    "OHIF"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
