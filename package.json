@@ -48,12 +48,6 @@
         ],
         "priority": "default"
       }
-    ],
-    "commands": [
-      {
-        "command": "react-ext.namasteworld",
-        "title": "React Web View"
-      }
     ]
   },
   "scripts": {
