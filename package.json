@@ -9,9 +9,12 @@
     "email": "jakubsliwice@o2.pl",
     "url": "https://github.com/kubzoey95"
   },
-  "repository": {"ohif-viewer-vscode": "https://github.com/kubzoey95/ohif-viewer-vscode.git"},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kubzoey95/ohif-viewer-vscode.git"
+  },
   "license": "MIT",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "engines": {
     "vscode": "^1.89.0"
   },
