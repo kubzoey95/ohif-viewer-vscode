@@ -3,7 +3,15 @@
   "displayName": "OHIF Viewer",
   "description": "OHIF Viewer integrated with VSCode",
   "publisher": "kubzoey95",
-  "version": "0.0.1",
+  "icon": "Viewers/platform/app/public/assets/favicon.ico",
+  "author": {
+    "name": "Jakub Belicki",
+    "email": "jakubsliwice@o2.pl",
+    "url": "https://github.com/kubzoey95"
+  },
+  "repository": {"ohif-viewer-vscode": "https://github.com/kubzoey95/ohif-viewer-vscode.git"},
+  "license": "MIT",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.89.0"
   },
@@ -11,6 +19,18 @@
     "Visualization",
     "Data Science",
     "Other"
+  ],
+  "keywords": [
+    "neuroimaging",
+    "medical",
+    "imaging",
+    "neuroscience",
+    "MRI",
+    "CT",
+    "brain",
+    "tomography",
+    "DICOM",
+    "DCM"
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
