@@ -5,6 +5,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import express from 'express';
 import * as dcmjs from 'dcmjs';
+import { writeFile } from 'fs';
 
 class DcmViewDocument implements CustomDocument{
     _uri: Uri;
@@ -59,12 +60,15 @@ export class DcmView implements CustomReadonlyEditorProvider{
 
         const jsonUri = vscode.Uri.joinPath(document.metaDir, "dicom.json");
         
-        const json = await doConversion(document.dir.path, `${this.appUri}${document.dcmsEndpoint}/`, jsonUri.path);
+        let json = await doConversion(document.dir.path, `${this.appUri}${document.dcmsEndpoint}/`, jsonUri.path);
         
-        const SeriesInstanceUID = await vscode.workspace.fs.readFile(document.uri).then(e => {
+        const SeriesInstanceUID = await vscode.workspace.fs.readFile(document.uri).then(async e => {
             const dicomDict = dcmjs.data.DicomMessage.readFile(e.buffer);
             const instance = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
             const { StudyInstanceUID, SeriesInstanceUID } = instance;
+            json.studies = json.studies.filter(e => e.StudyInstanceUID === StudyInstanceUID);
+            json.studies[0].series = json.studies[0].series.filter(e => e.SeriesInstanceUID === SeriesInstanceUID);
+            await writeFile(jsonUri.path, JSON.stringify(json), e => console.log(e));
             return SeriesInstanceUID;
         });
         let OHIFUri = encodeURI(`${this.appUri}/viewer/dicomjson?url=${document.dicomJSONEndpoint}/dicom.json?SeriesInstanceUIDs=${SeriesInstanceUID}`);

@@ -63,19 +63,20 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath){
     }
 
     async function recursiveReadDir(dir) {
-    let results = [];
-    const list = await fs.readdir(dir);
-    for (const file of list) {
-        const filePath = path.resolve(dir, file);
-        const stat = await fs.stat(filePath);
-        if (stat.isDirectory()) {
-        const res = await recursiveReadDir(filePath);
-        results = results.concat(res);
-        } else {
-        results.push(filePath);
+        let results = [];
+        const list = await fs.readdir(dir);
+        for (const file of list) {
+            const filePath = path.resolve(dir, file);
+            const stat = await fs.stat(filePath);
+            if (stat.isDirectory()) {
+            // should read only in current directory
+            // const res = await recursiveReadDir(filePath);
+            // results = results.concat(res);
+            } else {
+            results.push(filePath);
+            }
         }
-    }
-    return results;
+        return results;
     }
 
     function createImageId(fileLocation, urlPrefix, studyDirectory) {
