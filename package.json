@@ -14,7 +14,7 @@
     "url": "https://github.com/kubzoey95/ohif-viewer-vscode.git"
   },
   "license": "MIT",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "engines": {
     "vscode": "^1.89.0"
   },
