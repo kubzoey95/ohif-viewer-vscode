@@ -29,7 +29,8 @@ const original = Module._load;
 Module._load = function(name, ...args) {
     return name === 'vscode' ? vscode : original.call(this, name, ...args);
 };
-const extension = require('../out/extension.js');
+const extensionRoot = path.resolve(process.env.OHIF_EXTENSION_ROOT || path.join(__dirname, '..'));
+const extension = require(path.join(extensionRoot, 'out/extension.js'));
 Module._load = original;
 
 function dicom(series, instance) {
@@ -55,7 +56,7 @@ test('opens a selected series directly in a webview using resource URLs', async 
         await fs.writeFile(path.join(root, 'slice #1.dcm'), dicom('1.2.3.4', '1.2.3.4.1'));
         await fs.writeFile(path.join(root, 'other.dcm'), dicom('1.2.3.5', '1.2.3.5.1'));
         const subscriptions = [];
-        extension.activate({ extensionUri: Uri.file(path.resolve(__dirname, '..')),
+        extension.activate({ extensionUri: Uri.file(extensionRoot),
             globalStorageUri: Uri.file(path.join(root, 'storage')), subscriptions });
         assert.equal(subscriptions.length, 1);
         const document = provider.openCustomDocument(Uri.file(path.join(root, 'slice #1.dcm')));
@@ -80,7 +81,7 @@ if (process.env.OHIF_DICOM_FILE) {
     test('renders a supplied DICOM series', async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ohif-webview-'));
         try {
-            extension.activate({ extensionUri: Uri.file(path.resolve(__dirname, '..')),
+            extension.activate({ extensionUri: Uri.file(extensionRoot),
                 globalStorageUri: Uri.file(root), subscriptions: [] });
             const document = provider.openCustomDocument(Uri.file(process.env.OHIF_DICOM_FILE));
             const webview = { cspSource: 'https://*.vscode-cdn.net',
