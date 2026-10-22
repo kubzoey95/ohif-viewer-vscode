@@ -1,100 +1,84 @@
 import * as vscode from 'vscode';
-import { CancellationToken, CustomDocument, CustomDocumentOpenContext, CustomReadonlyEditorProvider, Uri, WebviewPanel } from 'vscode';
 import { doConversion } from './dicom-json-generator.js';
-import * as path from 'path';
 import { randomUUID } from 'crypto';
-import express from 'express';
 import * as dcmjs from 'dcmjs';
-import { writeFile } from 'fs';
 
-class DcmViewDocument implements CustomDocument{
-    _uri: Uri;
-    public dir: Uri;
-    public fetched: Boolean = false;
-    public metaDir: Uri;
-    public extensionUri: Uri;
-    private app;
-    public dcmsEndpoint;
-    public dicomJSONEndpoint;
-    private endpoints = [];
+class DcmViewDocument implements vscode.CustomDocument {
+    public readonly dir: vscode.Uri;
+    public readonly metaDir: vscode.Uri;
 
-
-    public constructor(uri: Uri, extensionUri: Uri, app){
-        this._uri = uri;
-        this.extensionUri = extensionUri;
-        this.dir = vscode.Uri.file(path.dirname(this._uri.path));
-        this.metaDir = vscode.Uri.joinPath(this.extensionUri, randomUUID());
-        vscode.workspace.fs.createDirectory(this.metaDir);
-        this.app = app;
-        this.dcmsEndpoint = `/${randomUUID()}`;
-        this.dicomJSONEndpoint = `/${randomUUID()}`;
-        
-        this.endpoints = [this.app.use(this.dcmsEndpoint, express.static(this.dir.path)), this.app.use(this.dicomJSONEndpoint, express.static(this.metaDir.path))];
+    constructor(public readonly uri: vscode.Uri, storage: vscode.Uri) {
+        this.dir = vscode.Uri.joinPath(uri, '..');
+        this.metaDir = vscode.Uri.joinPath(storage, randomUUID());
     }
-    get uri(){return this._uri;}
+
     dispose(): void {
-        vscode.workspace.fs.delete(this.metaDir, {recursive: true});
+        void vscode.workspace.fs.delete(this.metaDir, { recursive: true }).then(undefined, () => {});
     }
 }
 
-export class DcmView implements CustomReadonlyEditorProvider{
-    
-    private extensionUri: Uri;
-    private cacheDir: Uri;
-    private appUri: string;
-    private app;
-    
-    public constructor(extensionUri: Uri, cacheDir: Uri, appUri: string, app){
-        this.extensionUri = extensionUri;
-        this.cacheDir = cacheDir;
-        this.appUri = appUri;
-        this.app = app;
+function scriptValue(value: string): string {
+    return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+function attribute(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+export class DcmView implements vscode.CustomReadonlyEditorProvider<DcmViewDocument> {
+    constructor(private readonly extensionUri: vscode.Uri, private readonly storage: vscode.Uri) {}
+
+    openCustomDocument(uri: vscode.Uri): DcmViewDocument {
+        return new DcmViewDocument(uri, this.storage);
     }
 
-    openCustomDocument(uri: Uri, openContext: CustomDocumentOpenContext, token: CancellationToken): CustomDocument | Thenable<CustomDocument> {
-        return new DcmViewDocument(uri, this.cacheDir, this.app);
+    async resolveCustomEditor(document: DcmViewDocument, panel: vscode.WebviewPanel,
+        token: vscode.CancellationToken): Promise<void> {
+        const workerScript = vscode.Uri.joinPath(this.extensionUri, 'out', 'webview-worker.js');
+        const viewer = vscode.Uri.joinPath(this.extensionUri, 'out', 'viewer-dist');
+        const webview = panel.webview;
+        webview.options = {
+            enableScripts: true,
+            localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'out'), document.dir, document.metaDir],
+        };
+        try {
+            await vscode.workspace.fs.createDirectory(document.metaDir);
+            const jsonUri = vscode.Uri.joinPath(document.metaDir, 'dicom.json');
+            const json = await doConversion(document.dir.fsPath, '', undefined,
+                (file: string) => webview.asWebviewUri(vscode.Uri.file(file)).toString());
+            const bytes = await vscode.workspace.fs.readFile(document.uri);
+            const dicom = dcmjs.data.DicomMessage.readFile(
+                bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+            const instance = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicom.dict);
+            json.studies = json.studies.filter(study => study.StudyInstanceUID === instance.StudyInstanceUID);
+            for (const study of json.studies) {
+                study.series = study.series.filter(series => series.SeriesInstanceUID === instance.SeriesInstanceUID);
+                study.NumInstances = study.series.reduce((total, series) => total + series.instances.length, 0);
+                study.Modalities = [...new Set(study.series.map(series => series.Modality))].join('/');
+            }
+            if (!json.studies.length || !json.studies[0].series.length) {
+                throw new Error('The selected DICOM series could not be loaded.');
+            }
+            await vscode.workspace.fs.writeFile(jsonUri, Buffer.from(JSON.stringify(json)));
+            let html = Buffer.from(await vscode.workspace.fs.readFile(
+                vscode.Uri.joinPath(viewer, 'index.html'))).toString('utf8');
+            const base = webview.asWebviewUri(viewer).toString() + '/';
+            const jsonUrl = webview.asWebviewUri(jsonUri).toString();
+            // Keep routing on the webview origin; assets use the separate VS Code resource origin.
+            const bootstrap = `<script>window.PUBLIC_URL='/';window.__OHIF_ASSET_URL__=${scriptValue(base)};const route=new URL(location.href);route.pathname='/viewer/dicomjson';route.searchParams.set('url',${scriptValue(jsonUrl)});history.replaceState(null,'',route.href);</script><script src="${attribute(webview.asWebviewUri(workerScript).toString())}"></script>`;
+            html = html.replace(/window\.PUBLIC_URL\s*=\s*(['"])[^'"]*\1\s*;/g, '');
+            html = html.replace(/<script\b[^>]*src=["'][^"']*init-service-worker\.js["'][^>]*><\/script>/g, '');
+            html = html.replace(/\b(src|href)="\/(?!\/)([^"]*)"/g,
+                (_, name, resource) => `${name}="${attribute(base)}${resource}"`);
+            const csp = `default-src 'none'; base-uri ${webview.cspSource}; script-src ${webview.cspSource} blob: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src ${webview.cspSource} 'unsafe-inline' https://fonts.googleapis.com; font-src ${webview.cspSource} data: https://fonts.gstatic.com; img-src ${webview.cspSource} data: blob:; connect-src ${webview.cspSource} blob:; worker-src blob:; media-src ${webview.cspSource} blob: data:;`;
+            html = html.replace(/<head>/i, `<head><meta http-equiv="Content-Security-Policy" content="${attribute(csp)}"><base href="${attribute(base)}">${bootstrap}`);
+            if (!token.isCancellationRequested) {
+                webview.html = html;
+            }
+        } catch (error) {
+            if (!token.isCancellationRequested) {
+                webview.html = `<html><body><h2>Unable to open DICOM series</h2><p>${attribute(String(error))}</p></body></html>`;
+            }
+        }
     }
-
-    async resolveCustomEditor(document: DcmViewDocument, panel: WebviewPanel, token: CancellationToken): Promise<void> {
-        panel.webview.options = {enableScripts: true, localResourceRoots: [this.extensionUri, document.dir, document.metaDir]};
-
-        const jsonUri = vscode.Uri.joinPath(document.metaDir, "dicom.json");
-        
-        let json = await doConversion(document.dir.path, `${this.appUri}${document.dcmsEndpoint}/`, jsonUri.path);
-        
-        const SeriesInstanceUID = await vscode.workspace.fs.readFile(document.uri).then(async e => {
-            const dicomDict = dcmjs.data.DicomMessage.readFile(e.buffer);
-            const instance = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
-            const { StudyInstanceUID, SeriesInstanceUID } = instance;
-            json.studies = json.studies.filter(e => e.StudyInstanceUID === StudyInstanceUID);
-            json.studies[0].series = json.studies[0].series.filter(e => e.SeriesInstanceUID === SeriesInstanceUID);
-            await writeFile(jsonUri.path, JSON.stringify(json), e => console.log(e));
-            return SeriesInstanceUID;
-        });
-        let OHIFUri = encodeURI(`${this.appUri}/viewer/dicomjson?url=${document.dicomJSONEndpoint}/dicom.json?SeriesInstanceUIDs=${SeriesInstanceUID}`);
-        panel.webview.html = `
-        <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-        <html xmlns="http://www.w3.org/1999/xhtml">
-            <head>
-                <title>Test Layout</title>
-                <style type="text/css">
-                    body, html
-                    {
-                        margin: 0; padding: 0; height: 100%; overflow: hidden;
-                    }
-
-                    #content
-                    {
-                        position:absolute; left: 0; right: 0; bottom: 0; top: 0px; 
-                    }
-                </style>
-            </head>
-            <body>
-                <div id="content">
-                    <iframe width="100%" height="100%" frameborder="0" src="${OHIFUri}"></iframe>
-                </div>
-            </body>
-        </html>
-        `;
-	}
 }

@@ -17,3 +17,5 @@ vsc-extension-quickstart.md
 cacheDir/**
 view.png
 ohifConfig.js
+scripts/**
+tests/**

@@ -55,16 +55,16 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "APP_CONFIG=$(realpath ./ohifConfig.js) esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node && npm run build-viewer",
+    "compile": "npm run compile-extension && npm run build-viewer",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "postinstall": "cd Viewers && yarn install",
-    "build-viewer": "cd Viewers && yarn run build && cd .. && rm -rf out/viewer-dist && mkdir -p out && cp -r Viewers/platform/app/dist out/viewer-dist"
+    "postinstall": "cd Viewers && corepack pnpm install",
+    "build-viewer": "cd Viewers && APP_CONFIG=../../../../ohifConfig.js PUBLIC_URL=./ corepack pnpm run build && cd .. && node scripts/copy-viewer.cjs",
+    "compile-extension": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node && esbuild ./src/webview-worker.js --outfile=out/webview-worker.js --platform=browser",
+    "test:webview": "npm run compile-extension && node --test tests/webview.cjs"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/http-server": "^0.12.4",
     "@types/mocha": "^10.0.6",
     "@types/node": "^18.19.33",
     "@types/vscode": "^1.89.0",
@@ -77,11 +77,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "dcmjs": "^0.33.0",
-    "express": "^4.19.2",
-    "glob": "^10.4.1",
-    "helmet": "^7.1.0",
-    "http-server": "^14.1.1"
+    "glob": "^10.4.1"
   }
 }

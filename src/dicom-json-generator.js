@@ -20,7 +20,7 @@ import * as dcmjs from 'dcmjs';
 const path = require('path');
 const fs = require('fs').promises;
 
-export async function doConversion(studyDirectory, urlPrefix, outputPath){
+export async function doConversion(studyDirectory, urlPrefix, outputPath, resourceUrl){
 
     const model = {
     studies: [],
@@ -37,7 +37,7 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath){
             
             const dicm = new TextDecoder().decode(Uint8Array.from(arrayBuffer).slice(128, 132));
             if (dicm === "DICM"){
-                const dicomDict = dcmjs.data.DicomMessage.readFile(arrayBuffer.buffer);
+                const dicomDict = dcmjs.data.DicomMessage.readFile(arrayBuffer.buffer.slice(arrayBuffer.byteOffset, arrayBuffer.byteOffset + arrayBuffer.byteLength));
                 const instance = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
         
                 instance.fileLocation = createImageId(file, urlPrefix, studyDirectory);
@@ -54,11 +54,11 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath){
         });
 
         const out = JSON.stringify(model, null, 2);
-        await fs.writeFile(outputPath, out);
+        if (outputPath) { await fs.writeFile(outputPath, out); }
         console.log('JSON saved');
         return model;
     } catch (error) {
-        console.error(error);
+        throw error;
     }
     }
 
@@ -80,6 +80,7 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath){
     }
 
     function createImageId(fileLocation, urlPrefix, studyDirectory) {
+    if (resourceUrl) { return `dicomweb:${resourceUrl(fileLocation)}`; }
     const relativePath = path.relative(studyDirectory, fileLocation);
     const normalizedPath = path.normalize(relativePath).replace(/\\/g, '/');
     return `dicomweb:${urlPrefix}${normalizedPath}`;
