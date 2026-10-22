@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const Module = require('node:module');
 const { pathToFileURL, fileURLToPath } = require('node:url');
-const dcmjs = require('dcmjs');
+const { dicom } = require('./dicom-fixture.cjs');
 
 function uri(url) {
     return { toString: () => url.href, fsPath: fileURLToPath(url) };
@@ -33,21 +33,17 @@ const extensionRoot = path.resolve(process.env.OHIF_EXTENSION_ROOT || path.join(
 const extension = require(path.join(extensionRoot, 'out/extension.js'));
 Module._load = original;
 
-function dicom(series, instance) {
-    const data = new dcmjs.data.DicomDict(dcmjs.data.DicomMetaDictionary.denaturalizeDataset({
-        TransferSyntaxUID: '1.2.840.10008.1.2.1',
-        MediaStorageSOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
-        MediaStorageSOPInstanceUID: instance,
-    }));
-    data.dict = dcmjs.data.DicomMetaDictionary.denaturalizeDataset({
-        StudyInstanceUID: '1.2.3', SeriesInstanceUID: series, SOPInstanceUID: instance,
-        SOPClassUID: '1.2.840.10008.5.1.4.1.1.2', Modality: 'CT', PatientID: 'test',
-        Rows: 2, Columns: 2, PixelData: new Uint16Array([0, 100, 200, 300]).buffer,
-        PixelSpacing: [1, 1], ImageOrientationPatient: [1, 0, 0, 0, 1, 0],
-        ImagePositionPatient: [0, 0, 0], WindowCenter: 150, WindowWidth: 300, BitsAllocated: 16, BitsStored: 16, HighBit: 15,
-        PixelRepresentation: 0, SamplesPerPixel: 1, PhotometricInterpretation: 'MONOCHROME2',
-    });
-    return Buffer.from(data.write());
+function createPanel() {
+    let receive;
+    const messages = [];
+    const webview = {
+        cspSource: 'https://*.vscode-cdn.net', html: '',
+        asWebviewUri: value => ({ toString: () => 'https://file%2B.vscode-resource.vscode-cdn.net' + pathToFileURL(value.fsPath).pathname }),
+        onDidReceiveMessage: listener => { receive = listener; return { dispose() {} }; },
+        postMessage: async message => { messages.push(message); return true; },
+    };
+    return { webview, onDidDispose() { return { dispose() {} }; },
+        ready() { receive({ type: 'viewer-ready' }); }, messages };
 }
 
 test('opens a selected series directly in a webview using resource URLs', async () => {
@@ -60,8 +56,17 @@ test('opens a selected series directly in a webview using resource URLs', async 
             globalStorageUri: Uri.file(path.join(root, 'storage')), subscriptions });
         assert.equal(subscriptions.length, 1);
         const document = provider.openCustomDocument(Uri.file(path.join(root, 'slice #1.dcm')));
-        const webview = { cspSource: 'https://*.vscode-cdn.net', asWebviewUri: value => ({ toString: () => 'https://file%2B.vscode-resource.vscode-cdn.net' + pathToFileURL(value.fsPath).pathname }), html: '' };
-        await provider.resolveCustomEditor(document, { webview }, { isCancellationRequested: false });
+        const panel = createPanel();
+        const webview = panel.webview;
+        let html;
+        Object.defineProperty(webview, 'html', {
+            get: () => html,
+            set: value => { html = value; panel.ready(); },
+        });
+        await provider.resolveCustomEditor(document, panel, { isCancellationRequested: false });
+        panel.ready();
+        assert.equal(panel.messages.at(-1).type, 'metadata-ready');
+        assert.ok(panel.messages.some(message => message.type === 'metadata-progress'));
         if (process.env.OHIF_BROWSER_TEST) { await require('./browser.cjs')(webview.html, webview.options.localResourceRoots.map(root => root.fsPath)); }
         assert.match(webview.html, /id="root"/);
         assert.doesNotMatch(webview.html, /<iframe|localhost|init-service-worker\.js/);
@@ -84,11 +89,31 @@ if (process.env.OHIF_DICOM_FILE) {
             extension.activate({ extensionUri: Uri.file(extensionRoot),
                 globalStorageUri: Uri.file(root), subscriptions: [] });
             const document = provider.openCustomDocument(Uri.file(process.env.OHIF_DICOM_FILE));
-            const webview = { cspSource: 'https://*.vscode-cdn.net',
-                asWebviewUri: value => ({ toString: () => 'https://file%2B.vscode-resource.vscode-cdn.net' + pathToFileURL(value.fsPath).pathname }), html: '' };
-            await provider.resolveCustomEditor(document, { webview }, { isCancellationRequested: false });
+            const panel = createPanel();
+            const webview = panel.webview;
+            await provider.resolveCustomEditor(document, panel, { isCancellationRequested: false });
+            panel.ready();
+            assert.equal(panel.messages.at(-1).type, 'metadata-ready');
             await require('./browser.cjs')(webview.html, webview.options.localResourceRoots.map(root => root.fsPath));
             document.dispose();
         } finally { await fs.rm(root, { recursive: true, force: true }); }
     });
 }
+
+
+test('renders the first image while the remaining slices load in the background',
+    { skip: !process.env.OHIF_BROWSER_TEST }, async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ohif-webview-'));
+        try {
+            for (let index = 0; index < 32; index++) {
+                await fs.writeFile(path.join(root, `${index}.dcm`), dicom('1.2.3.4', `1.2.3.4.${index + 1}`, index));
+            }
+            extension.activate({ extensionUri: Uri.file(extensionRoot), globalStorageUri: Uri.file(path.join(root, 'storage')), subscriptions: [] });
+            const document = provider.openCustomDocument(Uri.file(path.join(root, '0.dcm')));
+            const panel = createPanel();
+            await provider.resolveCustomEditor(document, panel, { isCancellationRequested: false });
+            await require('./browser.cjs')(panel.webview.html, panel.webview.options.localResourceRoots.map(root => root.fsPath),
+                { expectBackgroundLoading: true, metadataDelay: 500 });
+            document.dispose();
+        } finally { await fs.rm(root, { recursive: true, force: true }); }
+    });

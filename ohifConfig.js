@@ -17,11 +17,11 @@ const config = {
   strictZSpacingForVolumeViewport: true,
   groupEnabledModesFirst: true,
   maxNumRequests: {
-    interaction: 100,
-    thumbnail: 75,
+    interaction: 8,
+    thumbnail: 2,
     // Prefetch number is dependent on the http protocol. For http 2 or
     // above, the number of requests can be go a lot higher.
-    prefetch: 25,
+    prefetch: 4,
   },
   // filterQueryParam: false,
   defaultDataSourceName: 'dicomjson',

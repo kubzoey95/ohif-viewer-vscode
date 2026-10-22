@@ -3,7 +3,7 @@ const { chromium } = require('../Viewers/node_modules/playwright');
 
 // Separate origins exercise webview routing, CSP, lazy chunks and blob workers.
 // Playwright intercepts resource requests; no HTTP server is started.
-module.exports = async function checkBrowser(html, resourceRoots = []) {
+module.exports = async function checkBrowser(html, resourceRoots = [], options = {}) {
     const browser = await chromium.launch({
         executablePath: process.env.OHIF_CHROME || '/usr/bin/google-chrome',
         headless: true,
@@ -12,6 +12,7 @@ module.exports = async function checkBrowser(html, resourceRoots = []) {
     try {
         const page = await browser.newPage();
         const errors = [];
+        let backgroundRequests = 0;
         page.on('pageerror', error => errors.push(error.message));
         if (process.env.OHIF_BROWSER_DEBUG) {
             page.on('console', message => { if (['error', 'warning'].includes(message.type())) console.log(message.type(), message.text().slice(0, 1400)); });
@@ -29,12 +30,24 @@ module.exports = async function checkBrowser(html, resourceRoots = []) {
                 await route.fulfill({ status: 408, body: 'No owning webview' });
                 return;
             }
+            if (file.endsWith('dicom.json')) {
+                assert.ok(await page.evaluate(() => window.__ohifMetadataReady), 'Metadata fetched before indexing completed');
+            }
+            if (file.endsWith('.dcm')) {
+                if (await page.evaluate(() => window.__ohifImageRendered)) { backgroundRequests++; }
+                // Make requests slower than rendering so prefetch can be observed.
+                if (options.expectBackgroundLoading) { await new Promise(resolve => setTimeout(resolve, 40)); }
+            }
             await route.fulfill({ path: file, headers: { 'access-control-allow-origin': '*' } });
         });
-        await page.addInitScript(() => {
+        await page.addInitScript(metadataDelay => {
+            window.acquireVsCodeApi = () => ({ postMessage: () => setTimeout(() => {
+                window.__ohifMetadataReady = true;
+                window.dispatchEvent(new MessageEvent('message', { data: { type: 'metadata-ready' } }));
+            }, metadataDelay) });
             window.__ohifImageRendered = false;
             document.addEventListener('CORNERSTONE_IMAGE_RENDERED', () => { window.__ohifImageRendered = true; }, true);
-        });
+        }, options.metadataDelay || 0);
         await page.goto('https://webview.test/index.html?id=webview');
         await page.getByText('Layout', { exact: true }).waitFor({ timeout: 20000 });
         await page.waitForFunction(() => document.querySelector('canvas.cornerstone-canvas'));
@@ -57,6 +70,13 @@ module.exports = async function checkBrowser(html, resourceRoots = []) {
         assert.equal(new URL(page.url()).origin, 'https://webview.test');
         assert.equal(new URL(page.url()).pathname, '/viewer/dicomjson');
         assert.equal(new URL(page.url()).searchParams.get('id'), 'webview');
+        if (options.expectBackgroundLoading) {
+            for (let attempt = 0; attempt < 100 && !backgroundRequests; attempt++) {
+                await page.waitForTimeout(50);
+            }
+            assert.ok(backgroundRequests > 0, 'No background slice requests after the first image rendered');
+        }
+        assert.equal(await page.locator('#ohif-startup-status').count(), 0);
         assert.deepEqual(errors, []);
     } finally {
         await browser.close();

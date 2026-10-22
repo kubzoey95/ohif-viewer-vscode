@@ -16,11 +16,11 @@
  * - outputJSONPath: path to the output JSON file
  */
 
-import * as dcmjs from 'dcmjs';
+import { readDicomMetadata } from './dicom-metadata.js';
 const path = require('path');
 const fs = require('fs').promises;
 
-export async function doConversion(studyDirectory, urlPrefix, outputPath, resourceUrl){
+export async function doConversion(studyDirectory, urlPrefix, outputPath, resourceUrl, options = {}){
 
     const model = {
     studies: [],
@@ -31,19 +31,26 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
         const files = await recursiveReadDir(studyDirectory);
         console.debug('Processing...');
 
-        for (const file of files) {
-        if (!file.includes('.DS_Store') && !file.includes('.xml')) {
-            const arrayBuffer = await fs.readFile(file);
-            
-            const dicm = new TextDecoder().decode(Uint8Array.from(arrayBuffer).slice(128, 132));
-            if (dicm === "DICM"){
-                const dicomDict = dcmjs.data.DicomMessage.readFile(arrayBuffer.buffer.slice(arrayBuffer.byteOffset, arrayBuffer.byteOffset + arrayBuffer.byteLength));
-                const instance = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomDict.dict);
-        
-                instance.fileLocation = createImageId(file, urlPrefix, studyDirectory);
-                processInstance(instance);
+        let next = 0;
+        let completed = 0;
+        const instances = new Array(files.length);
+        // Bound disk activity and yield between headers so the extension host stays responsive.
+        await Promise.all(Array.from({ length: Math.min(8, files.length) }, async () => {
+            while (next < files.length) {
+                const index = next++;
+                const file = files[index];
+                instances[index] = await readDicomMetadata(file, options.isCancelled);
+                completed++;
+                options.onProgress?.(completed, files.length);
             }
-        }
+        }));
+        // Preserve directory order regardless of concurrent read completion order.
+        for (let index = 0; index < files.length; index++) {
+            const instance = instances[index];
+            if (!instance?.StudyInstanceUID || !instance?.SeriesInstanceUID) { continue; }
+            if (options.selectedInstance && (instance.StudyInstanceUID !== options.selectedInstance.StudyInstanceUID ||
+                instance.SeriesInstanceUID !== options.selectedInstance.SeriesInstanceUID)) { continue; }
+            processInstance({ ...instance, fileLocation: createImageId(files[index], urlPrefix, studyDirectory) });
         }
 
         console.log('Successfully loaded data');
@@ -63,20 +70,10 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
     }
 
     async function recursiveReadDir(dir) {
-        let results = [];
-        const list = await fs.readdir(dir);
-        for (const file of list) {
-            const filePath = path.resolve(dir, file);
-            const stat = await fs.stat(filePath);
-            if (stat.isDirectory()) {
-            // should read only in current directory
-            // const res = await recursiveReadDir(filePath);
-            // results = results.concat(res);
-            } else {
-            results.push(filePath);
-            }
-        }
-        return results;
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        return entries.filter(entry => (entry.isFile() || entry.isSymbolicLink()) && !entry.name.startsWith('.') &&
+            !/\.(xml|json|txt|png|jpe?g|pdf)$/i.test(entry.name))
+            .map(entry => path.join(dir, entry.name));
     }
 
     function createImageId(fileLocation, urlPrefix, studyDirectory) {

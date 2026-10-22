@@ -19,5 +19,7 @@ assert.ok(manifest.wasm.length, 'Viewer has no decoder WASM assets.');
 for (const name of [...Object.keys(manifest.scripts), ...Object.values(manifest.scripts).flat(), ...manifest.wasm]) {
     assert.ok(fs.existsSync(path.join(viewer, name)), `Missing worker asset: ${name}`);
 }
-assert.ok(fs.existsSync(path.join(root, 'out/webview-worker.js')), 'Compile the webview worker adapter first.');
+for (const helper of ['webview-worker.js', 'webview-startup.js']) {
+    assert.ok(fs.existsSync(path.join(root, 'out', helper)), `Compile the webview helper first: ${helper}`);
+}
 console.log('Validated built viewer entry points, worker dependencies and decoder assets.');

@@ -14,7 +14,7 @@
     "url": "https://github.com/kubzoey95/ohif-viewer-vscode.git"
   },
   "license": "MIT",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "engines": {
     "vscode": "^1.89.0"
   },
@@ -54,15 +54,15 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile-extension && node scripts/prepare-release.cjs && npm run lint && npm run check-types && node --test tests/webview.cjs",
+    "vscode:prepublish": "npm run compile-extension && node scripts/prepare-release.cjs && npm run lint && npm run check-types && node --test tests/webview.cjs tests/metadata.cjs",
     "compile": "npm run compile-extension && npm run build-viewer",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
     "postinstall": "cd Viewers && corepack pnpm install",
     "build-viewer": "cd Viewers && APP_CONFIG=../../../../ohifConfig.js PUBLIC_URL=./ corepack pnpm run build && cd .. && node scripts/copy-viewer.cjs",
-    "compile-extension": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node && esbuild ./src/webview-worker.js --outfile=out/webview-worker.js --platform=browser",
-    "test:webview": "npm run compile-extension && node --test tests/webview.cjs",
+    "compile-extension": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node && esbuild ./src/webview-worker.js --outfile=out/webview-worker.js --platform=browser && esbuild ./src/webview-startup.js --outfile=out/webview-startup.js --platform=browser",
+    "test:webview": "npm run compile-extension && node --test tests/webview.cjs tests/metadata.cjs",
     "check-types": "tsc --noEmit",
     "release:package": "vsce package --no-dependencies --no-yarn"
   },

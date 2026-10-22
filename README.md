@@ -10,7 +10,9 @@ ext install kubzoey95.ohif-viewer
 
 OHIF runs directly in the VS Code editor webview. No local HTTP server, port
 forwarding, or separate browser window is needed. Opening a DICOM file loads its
-series from files in the same directory.
+series from files in the same directory. Indexing reads headers without parsing
+pixel data; OHIF then loads images on demand and preloads nearby slices in the
+background. The viewer starts alongside indexing and displays its progress.
 
 To build the extension, use Node.js 24 or newer with Corepack enabled:
 
