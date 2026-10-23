@@ -14,6 +14,11 @@ series from files in the same directory. Indexing reads headers without parsing
 pixel data; OHIF then loads images on demand and preloads nearby slices in the
 background. The viewer starts alongside indexing and displays its progress.
 
+`Viewers` is pinned to OHIF stable tag [`v3.13.13`](https://github.com/OHIF/Viewers/releases/tag/v3.13.13)
+(`1fa151f5133934c953a2ab4c0056ca91f929c32f`). Initialize it with
+`git submodule update --init Viewers`. `npm install` and viewer builds apply the
+tracked compatibility patches in `patches/`, including local multiframe URLs.
+
 To build the extension, use Node.js 24 or newer with Corepack enabled:
 
 ```sh

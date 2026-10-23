@@ -1,0 +1,17 @@
+diff --git a/extensions/default/src/DicomWebDataSource/utils/getImageId.js b/extensions/default/src/DicomWebDataSource/utils/getImageId.js
+index b3dcef097e..69fb1c1810 100644
+--- a/extensions/default/src/DicomWebDataSource/utils/getImageId.js
++++ b/extensions/default/src/DicomWebDataSource/utils/getImageId.js
+@@ -34,6 +34,12 @@ export default function getImageId({ instance, frame, config, thumbnail = false
+   }
+ 
+   if (instance.url) {
++    if (frame !== undefined && /^(dicomweb|wadouri):/.test(instance.url)) {
++      const url = instance.url.replace(/([?&])frame=\d+(&|$)/, '$1').replace(/[?&]$/, '');
++      const separator = url.includes('?') ? '&' : '?';
++      // The display-set frame index is zero based; WADO-URI uses one based frames.
++      return url + separator + 'frame=' + (Number(frame) + 1);
++    }
+     return instance.url;
+   }
+ 

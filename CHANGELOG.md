@@ -2,6 +2,7 @@
 
 ## 1.0.9
 
+- Pin the OHIF viewer to stable release v3.13.13 and preserve local compatibility fixes as tracked patches.
 - Fix `RangeError: Invalid string length` when opening enhanced multiframe CT by storing functional group metadata once per DICOM instance.
 - Select distinct frame URLs for local multiframe images so individual slices render and navigation works.
 - Include bundled fonts and nested decoder assets in the packaged viewer.
