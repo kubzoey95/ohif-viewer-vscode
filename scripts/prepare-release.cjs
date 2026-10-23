@@ -7,7 +7,7 @@ assert.ok(fs.existsSync(path.join(viewer, 'index.html')),
     'Build OHIF first with npm run build-viewer. Release packaging uses the built viewer assets.');
 fs.copyFileSync(path.join(root, 'ohifConfig.js'), path.join(viewer, 'app-config.js'));
 require('./prepare-viewer.cjs');
-const html = fs.readFileSync(path.join(viewer, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(viewer, 'index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
 for (const [, resource] of html.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+)"/g)) {
     if (/^(?:https?:|data:|\/\/)/.test(resource)) { continue; }
     const file = path.resolve(viewer, resource.replace(/^\//, ''));

@@ -94,7 +94,9 @@ if (process.env.OHIF_DICOM_FILE) {
             await provider.resolveCustomEditor(document, panel, { isCancellationRequested: false });
             panel.ready();
             assert.equal(panel.messages.at(-1).type, 'metadata-ready');
-            await require('./browser.cjs')(webview.html, webview.options.localResourceRoots.map(root => root.fsPath));
+            await require('./browser.cjs')(webview.html, webview.options.localResourceRoots.map(root => root.fsPath), {
+                expectedFrameCount: Number(process.env.OHIF_EXPECTED_FRAMES) || undefined,
+            });
             document.dispose();
         } finally { await fs.rm(root, { recursive: true, force: true }); }
     });

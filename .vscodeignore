@@ -4,4 +4,4 @@
 !CHANGELOG.md
 !LICENSE.txt
 !icon.png
-!out/**/*.{js,css,json,wasm,svg,png,ico,xml,webapp,html,txt}
+!out/**/*.{js,css,json,wasm,svg,png,ico,xml,webapp,html,txt,woff,woff2}

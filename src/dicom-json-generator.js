@@ -60,8 +60,7 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
         study.Modalities = findModalities(study).join('/');
         });
 
-        const out = JSON.stringify(model, null, 2);
-        if (outputPath) { await fs.writeFile(outputPath, out); }
+        if (outputPath) { await fs.writeFile(outputPath, JSON.stringify(model, null, 2)); }
         console.log('JSON saved');
         return model;
     } catch (error) {
@@ -99,12 +98,9 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
         study.series.push(series);
     }
 
-    const instanceMetaData =
-        instance.NumberOfFrames > 1
-        ? createInstanceMetaDataMultiFrame(instance)
-        : createInstanceMetaData(instance);
-
-    series.instances.push(...[].concat(instanceMetaData));
+    // OHIF expands NumberOfFrames into frame image IDs itself. Keep the full
+    // functional groups once per SOP instance, rather than once per frame.
+    series.instances.push(createInstanceMetaData(instance));
     }
 
     function getStudy(StudyInstanceUID) {
@@ -249,17 +245,5 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
     return { metadata, url: instance.fileLocation };
     }
 
-    function createInstanceMetaDataMultiFrame(instance) {
-    const instances = [];
-    const commonData = commonMetaData(instance);
-    const conditionalData = conditionalMetaData(instance);
-
-    for (let i = 1; i <= instance.NumberOfFrames; i++) {
-        const metadata = { ...commonData, ...conditionalData };
-        const result = { metadata, url: instance.fileLocation + `?frame=${i}` };
-        instances.push(result);
-    }
-    return instances;
-    }
     return await convertDICOMToJSON(studyDirectory, urlPrefix, outputPath);
 }

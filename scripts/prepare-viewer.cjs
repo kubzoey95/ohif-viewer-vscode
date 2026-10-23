@@ -26,7 +26,7 @@ for (const name of names.filter(name => name.endsWith('.js'))) {
     const source = fs.readFileSync(path.join(directory, name), 'utf8');
     const dependencies = new Set();
     // Webpack/Rspack worker runtimes map chunk numbers to content hashes.
-    for (const match of source.matchAll(/["']?(\d+)["']?\s*:\s*["']([a-f0-9]{16,})["']/g)) {
+    for (const match of source.matchAll(/["']?(\d+)["']?\s*:\s*["']([a-f0-9]{8,})["']/g)) {
         const dependency = `${match[1]}.bundle.${match[2]}.js`;
         if (names.includes(dependency)) { dependencies.add(dependency); }
     }
@@ -36,5 +36,9 @@ for (const name of names.filter(name => name.endsWith('.js'))) {
     scripts[name] = [...dependencies];
 }
 fs.writeFileSync(path.join(directory, 'webview-assets.json'), JSON.stringify({
-    scripts, wasm: names.filter(name => name.endsWith('.wasm')),
+    scripts, wasm: fs.readdirSync(directory, { recursive: true })
+        .map(name => name.replace(/\\/g, '/'))
+        // ONNX assets are loaded separately by segmentation; decoder workers
+        // must not prefetch every ONNX runtime variant.
+        .filter(name => name.endsWith('.wasm') && !name.startsWith('ort/')),
 }));

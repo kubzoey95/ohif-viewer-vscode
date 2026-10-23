@@ -9,8 +9,8 @@ module.exports = async function checkBrowser(html, resourceRoots = [], options =
         headless: true,
         args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     });
+    const page = await browser.newPage();
     try {
-        const page = await browser.newPage();
         const errors = [];
         let backgroundRequests = 0;
         page.on('pageerror', error => errors.push(error.message));
@@ -49,10 +49,28 @@ module.exports = async function checkBrowser(html, resourceRoots = [], options =
             document.addEventListener('CORNERSTONE_IMAGE_RENDERED', () => { window.__ohifImageRendered = true; }, true);
         }, options.metadataDelay || 0);
         await page.goto('https://webview.test/index.html?id=webview');
-        await page.getByText('Layout', { exact: true }).waitFor({ timeout: 20000 });
         await page.waitForFunction(() => document.querySelector('canvas.cornerstone-canvas'));
         await page.getByText('Loading...', { exact: true }).waitFor({ state: 'hidden', timeout: 20000 });
         await page.waitForFunction(() => window.__ohifImageRendered, null, { timeout: 20000 });
+        if (options.expectedFrameCount) {
+            const imageIds = await page.evaluate(() =>
+                window.cornerstone.getEnabledElements()[0].viewport.getImageIds());
+            assert.equal(imageIds.length, options.expectedFrameCount);
+            assert.equal(new Set(imageIds).size, options.expectedFrameCount, 'Every frame needs a distinct image ID');
+            // Check navigation as well as opening the instance. Middle CT slices
+            // contain image data even when the first slice is entirely padding.
+            await page.evaluate(async frameCount => {
+                const { viewport } = window.cornerstone.getEnabledElements()[0];
+                await window.cornerstone.utilities.jumpToSlice(viewport.element, {
+                    imageIndex: Math.floor(frameCount / 2),
+                });
+            }, options.expectedFrameCount);
+            await page.waitForFunction(frameCount => {
+                const { viewport } = window.cornerstone.getEnabledElements()[0];
+                const index = viewport.getCurrentImageIdIndex?.() ?? viewport.getSliceIndex();
+                return index === Math.floor(frameCount / 2);
+            }, options.expectedFrameCount);
+        }
         await page.waitForFunction(() => {
             const canvas = document.querySelector('canvas.cornerstone-canvas');
             const context = canvas?.getContext('2d');
@@ -79,6 +97,7 @@ module.exports = async function checkBrowser(html, resourceRoots = [], options =
         assert.equal(await page.locator('#ohif-startup-status').count(), 0);
         assert.deepEqual(errors, []);
     } finally {
+        await page.unrouteAll({ behavior: 'wait' });
         await browser.close();
     }
 };

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9
+
+- Fix `RangeError: Invalid string length` when opening enhanced multiframe CT by storing functional group metadata once per DICOM instance.
+- Select distinct frame URLs for local multiframe images so individual slices render and navigation works.
+- Include bundled fonts and nested decoder assets in the packaged viewer.
+
 ## 1.0.8
 
 - Index DICOM headers without parsing pixel data, using bounded concurrent reads and an in-memory metadata cache.
