@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.10
+
+- Add **Open Folder in OHIF Viewer** to the Explorer folder context menu and Command Palette.
+- Recursively index all DICOM studies and series using file headers, including extensionless files and files with other extensions.
+- Skip corrupt or unreadable file candidates while indexing folders.
+
 ## 1.0.9
 
 - Pin the OHIF viewer to stable release v3.13.13 and preserve local compatibility fixes as tracked patches.

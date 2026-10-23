@@ -1,6 +1,11 @@
 <h1>OHIF Viewer</h1>
 Display DICOM files using OHIF Viewer in Visual Studio Code.
 Click on any *.dcm file and OHIF Viewer will display corresponding series.
+Right-click a folder in the Explorer and choose **Open Folder in OHIF Viewer** to
+recursively index all its studies and series. Files are detected by their DICOM
+header, including extensionless files and files with other extensions. Symbolic
+link directories are skipped to avoid cycles. You can also run **Open Folder in
+OHIF Viewer** from the Command Palette.
 
 ```
 ext install kubzoey95.ohif-viewer

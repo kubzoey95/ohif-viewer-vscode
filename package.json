@@ -14,7 +14,7 @@
     "url": "https://github.com/kubzoey95/ohif-viewer-vscode.git"
   },
   "license": "MIT",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "engines": {
     "vscode": "^1.89.0"
   },
@@ -51,7 +51,22 @@
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "ohif-viewer.openFolder",
+        "title": "Open Folder in OHIF Viewer"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "ohif-viewer.openFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile-extension && node scripts/prepare-release.cjs && npm run lint && npm run check-types && node --test tests/webview.cjs tests/metadata.cjs",

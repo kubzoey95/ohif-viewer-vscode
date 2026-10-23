@@ -7,8 +7,8 @@ class DcmViewDocument implements vscode.CustomDocument {
     public readonly dir: vscode.Uri;
     public readonly metaDir: vscode.Uri;
 
-    constructor(public readonly uri: vscode.Uri, storage: vscode.Uri) {
-        this.dir = vscode.Uri.joinPath(uri, '..');
+    constructor(public readonly uri: vscode.Uri, storage: vscode.Uri, public readonly folder = false) {
+        this.dir = folder ? uri : vscode.Uri.joinPath(uri, '..');
         this.metaDir = vscode.Uri.joinPath(storage, randomUUID());
     }
 
@@ -27,6 +27,16 @@ function attribute(value: string): string {
 
 export class DcmView implements vscode.CustomReadonlyEditorProvider<DcmViewDocument> {
     constructor(private readonly extensionUri: vscode.Uri, private readonly storage: vscode.Uri) {}
+
+    async openFolder(uri: vscode.Uri): Promise<void> {
+        const document = new DcmViewDocument(uri, this.storage, true);
+        const panel = vscode.window.createWebviewPanel('dcmView', `OHIF: ${uri.path.split('/').pop()}`,
+            vscode.ViewColumn.Active, { retainContextWhenHidden: true });
+        panel.onDidDispose(() => document.dispose());
+        const cancellation = new vscode.CancellationTokenSource();
+        panel.onDidDispose(() => { cancellation.cancel(); cancellation.dispose(); });
+        await this.resolveCustomEditor(document, panel, cancellation.token);
+    }
 
     openCustomDocument(uri: vscode.Uri): DcmViewDocument {
         return new DcmViewDocument(uri, this.storage);
@@ -73,12 +83,13 @@ export class DcmView implements vscode.CustomReadonlyEditorProvider<DcmViewDocum
             if (isCancelled()) { return; }
             webview.html = html;
             htmlAssigned = true;
-            const instance = await readDicomMetadata(document.uri.fsPath, isCancelled);
-            if (!instance?.SeriesInstanceUID) { throw new Error('The selected file has no DICOM series.'); }
+            const instance = document.folder ? undefined : await readDicomMetadata(document.uri.fsPath, isCancelled);
+            if (!document.folder && !instance?.SeriesInstanceUID) { throw new Error('The selected file has no DICOM series.'); }
             let lastProgress = 0;
             const json = await doConversion(document.dir.fsPath, '', undefined,
                 (file: string) => webview.asWebviewUri(vscode.Uri.file(file)).toString(), {
                     selectedInstance: instance,
+                    recursive: document.folder,
                     isCancelled,
                     onProgress: (completed: number, total: number) => {
                         if (Date.now() - lastProgress < 100 && completed !== total) { return; }
@@ -88,7 +99,7 @@ export class DcmView implements vscode.CustomReadonlyEditorProvider<DcmViewDocum
                     },
                 });
             if (!json.studies.length || !json.studies[0].series.length) {
-                throw new Error('The selected DICOM series could not be loaded.');
+                throw new Error(document.folder ? 'No DICOM instances with study and series identifiers were found in this folder.' : 'The selected DICOM series could not be loaded.');
             }
             if (isCancelled()) { return; }
             await vscode.workspace.fs.writeFile(jsonUri, Buffer.from(JSON.stringify(json)));

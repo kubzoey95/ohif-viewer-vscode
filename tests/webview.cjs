@@ -8,22 +8,29 @@ const { pathToFileURL, fileURLToPath } = require('node:url');
 const { dicom } = require('./dicom-fixture.cjs');
 
 function uri(url) {
-    return { toString: () => url.href, fsPath: fileURLToPath(url) };
+    return { path: url.pathname, toString: () => url.href, fsPath: fileURLToPath(url) };
 }
 const Uri = {
     file: file => uri(pathToFileURL(file)),
     joinPath: (base, ...parts) => Uri.file(path.join(base.fsPath, ...parts)),
 };
 let provider;
+let openFolder;
+let folderPanel;
 const vscode = {
     Uri,
+    ViewColumn: { Active: 1 },
+    FileType: { Directory: 2 },
+    CancellationTokenSource: class { token = { isCancellationRequested: false }; dispose() {} },
+    commands: { registerCommand: (_, handler) => { openFolder = handler; return { dispose() {} }; } },
     workspace: { fs: {
+        stat: async value => ({ type: (await fs.stat(value.fsPath)).isDirectory() ? 2 : 1 }),
         createDirectory: value => fs.mkdir(value.fsPath, { recursive: true }),
         readFile: value => fs.readFile(value.fsPath),
         writeFile: (value, bytes) => fs.writeFile(value.fsPath, bytes),
         delete: value => fs.rm(value.fsPath, { recursive: true, force: true }),
     } },
-    window: { registerCustomEditorProvider: (_, value) => { provider = value; return { dispose() {} }; } },
+    window: { createWebviewPanel: () => (folderPanel = createPanel()), registerCustomEditorProvider: (_, value) => { provider = value; return { dispose() {} }; } },
 };
 const original = Module._load;
 Module._load = function(name, ...args) {
@@ -54,7 +61,7 @@ test('opens a selected series directly in a webview using resource URLs', async 
         const subscriptions = [];
         extension.activate({ extensionUri: Uri.file(extensionRoot),
             globalStorageUri: Uri.file(path.join(root, 'storage')), subscriptions });
-        assert.equal(subscriptions.length, 1);
+        assert.equal(subscriptions.length, 2);
         const document = provider.openCustomDocument(Uri.file(path.join(root, 'slice #1.dcm')));
         const panel = createPanel();
         const webview = panel.webview;
@@ -119,3 +126,28 @@ test('renders the first image while the remaining slices load in the background'
             document.dispose();
         } finally { await fs.rm(root, { recursive: true, force: true }); }
     });
+
+
+test('folder command indexes nested studies regardless of file extension', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ohif-folder-'));
+    try {
+        const study = path.join(root, 'study');
+        await fs.mkdir(path.join(study, 'nested'), { recursive: true });
+        await fs.writeFile(path.join(study, 'no-extension'), dicom('1.2.3.4', '1.2.3.4.1'));
+        await fs.writeFile(path.join(study, 'nested', 'image.txt'), dicom('1.2.3.5', '1.2.3.5.1', 0,
+            { StudyInstanceUID: '9.8.7.6' }));
+        await fs.writeFile(path.join(study, 'fake.dcm'), 'not a DICOM file');
+        extension.activate({ extensionUri: Uri.file(extensionRoot),
+            globalStorageUri: Uri.file(path.join(root, 'storage')), subscriptions: [] });
+        await openFolder(Uri.file(study));
+        folderPanel.ready();
+        assert.equal(folderPanel.messages.at(-1).type, 'metadata-ready');
+        const [index] = await fs.readdir(path.join(root, 'storage'));
+        const json = JSON.parse(await fs.readFile(path.join(root, 'storage', index, 'dicom.json')));
+        assert.equal(json.studies.length, 2);
+        assert.equal(json.studies.reduce((sum, study) => sum + study.NumInstances, 0), 2);
+        assert.ok(json.studies.flatMap(study => study.series).flatMap(series => series.instances)
+            .some(instance => instance.url.endsWith('/nested/image.txt')));
+        assert.ok(folderPanel.webview.options.localResourceRoots.some(uri => uri.fsPath === study));
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+});

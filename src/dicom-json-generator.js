@@ -39,7 +39,13 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
             while (next < files.length) {
                 const index = next++;
                 const file = files[index];
-                instances[index] = await readDicomMetadata(file, options.isCancelled);
+                try {
+                    instances[index] = await readDicomMetadata(file, options.isCancelled);
+                } catch (error) {
+                    if (error.name === 'AbortError' || !options.recursive) { throw error; }
+                    // A corrupt or unreadable file must not prevent loading the remaining study.
+                    console.warn(`Skipping DICOM candidate ${file}: ${error.message}`);
+                }
                 completed++;
                 options.onProgress?.(completed, files.length);
             }
@@ -69,10 +75,23 @@ export async function doConversion(studyDirectory, urlPrefix, outputPath, resour
     }
 
     async function recursiveReadDir(dir) {
+        if (options.isCancelled?.()) {
+            const error = new Error('DICOM indexing cancelled');
+            error.name = 'AbortError';
+            throw error;
+        }
         const entries = await fs.readdir(dir, { withFileTypes: true });
-        return entries.filter(entry => (entry.isFile() || entry.isSymbolicLink()) && !entry.name.startsWith('.') &&
-            !/\.(xml|json|txt|png|jpe?g|pdf)$/i.test(entry.name))
-            .map(entry => path.join(dir, entry.name));
+        const files = [];
+        for (const entry of entries) {
+            const file = path.join(dir, entry.name);
+            if (entry.isDirectory() && options.recursive) {
+                files.push(...await recursiveReadDir(file));
+            } else if (entry.isFile() || (!options.recursive && entry.isSymbolicLink())) {
+                // Detection uses the DICM header, never the name or extension.
+                files.push(file);
+            }
+        }
+        return files;
     }
 
     function createImageId(fileLocation, urlPrefix, studyDirectory) {
